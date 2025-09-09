@@ -9,28 +9,181 @@
       :root{ --from:#0EA5E9; --to:#10B981; --angle:135deg; }
       html,body{height:100%;margin:0}
       body{display:grid;place-items:center;background:linear-gradient(var(--angle), var(--from), var(--to));font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,Arial,sans-serif;color:#052e2b}
-      .card{background:rgba(255,255,255,.92);border-radius:16px;padding:28px 32px;box-shadow:0 10px 30px rgba(0,0,0,.12);max-width:980px;width:92%}
+      .card{background:rgba(255,255,255,.92);border-radius:16px;padding:28px 32px;box-shadow:0 10px 30px rgba(0,0,0,.12);max-width:1100px;width:94%}
       h1{margin:0 0 8px 0;font-size:28px}
       p{margin:0 0 12px 0;line-height:1.5}
       .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:8px}
       button{padding:10px 14px;border:0;border-radius:12px;background:#0EA5E9;color:white;font-weight:600;cursor:pointer}
       button.secondary{background:#10B981}
+      button.danger{background:#ef4444}
       button:disabled{opacity:.6;cursor:not-allowed}
       code,pre{background:#ecfeff;border-radius:8px;padding:8px 10px;display:block;white-space:pre-wrap}
       .meta{opacity:.7;font-size:14px}
       label{display:block;margin-top:10px;font-weight:600}
       input,select{padding:8px 10px;border-radius:10px;border:1px solid #a7f3d0}
-      form{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin-top:12px}
-      .col-2{grid-column:span 2}
-      .col-3{grid-column:span 3}
-      .col-6{grid-column:span 6}
       .list{margin-top:12px}
-      table{width:100%;border-collapse:collapse}
-      th,td{padding:8px;border-bottom:1px solid #d1fae5;text-align:left}
-      th{background:#ecfeff}
+      table{width:100%;border-collapse:collapse;margin-top:12px}
+      th,td{padding:8px;border-bottom:1px solid #d1fae5;text-align:left;vertical-align:top}
+      th{background:#ecfeff;position:sticky;top:0}
+      img{max-height:52px;display:block}
+      .status{min-width:110px}
+      .actions button{margin-right:.25rem}
+      .muted{color:#666}
+      .err{color:#b00020}
+      .ok{color:#0a7a0a}
+      .grid-id{max-width:260px;word-break:break-all}
+      .api-row input{min-width:260px}
     </style>
   </head>
   <body>
     <main class="card" role="main" aria-label="eBay Resell App">
       <h1>eBay Resell App</h1>
-      <p>Temporary pag
+      <p class="meta">Minimal no-build UI wired to your Cloudflare Worker API.</p>
+
+      <div class="row api-row">
+        <label for="apiBase">API</label>
+        <input id="apiBase" value="https://resell-api.phoneman1224.workers.dev" />
+        <label for="ownerTok">Owner Token</label>
+        <input id="ownerTok" placeholder="X-Owner-Token" />
+        <button id="btnLoad">Load</button>
+        <span id="status" class="muted"></span>
+      </div>
+
+      <div class="row">
+        <form id="createForm" onsubmit="return false" style="display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:10px;width:100%">
+          <input class="col-2" id="newSku" placeholder="SKU" />
+          <input class="col-3" id="newTitle" placeholder="Title" />
+          <input class="col-2" id="newCategory" placeholder="Category" />
+          <input class="col-2" id="newCostUsd" type="number" step="0.01" placeholder="Cost (USD)" />
+          <input class="col-1" id="newQty" type="number" min="1" value="1" placeholder="Qty" />
+          <button class="col-2 secondary" id="btnCreate">Add Item</button>
+        </form>
+      </div>
+
+      <section class="list">
+        <table id="grid" aria-label="Inventory">
+          <thead>
+            <tr>
+              <th>ID</th><th>SKU</th><th>Title</th><th>Category</th><th class="status">Status</th>
+              <th>Cost (¢)</th><th>Qty</th><th>Listed</th><th>Photo</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </section>
+    </main>
+
+<script>
+// --- tiny helpers (why: no framework, no build)
+const $ = (s, d=document)=> d.querySelector(s);
+const $$ = (s, d=document)=> Array.from(d.querySelectorAll(s));
+const gridBody = $('#grid tbody');
+
+function apiBase(){ return $('#apiBase').value.trim().replace(/\/$/,''); }
+function ownerToken(){ return $('#ownerTok').value.trim(); }
+
+async function req(path, opt={}){
+  const headers = opt.headers || {};
+  if (!(opt.body instanceof FormData)) headers['Content-Type'] = headers['Content-Type'] || 'application/json';
+  if (ownerToken()) headers['X-Owner-Token'] = ownerToken();
+  const res = await fetch(apiBase()+path, { method: opt.method||'GET', headers, body: opt.body instanceof FormData ? opt.body : (opt.body?JSON.stringify(opt.body):undefined) });
+  const ct = res.headers.get('content-type')||''; const data = ct.includes('application/json')? await res.json() : await res.text();
+  if(!res.ok){ const msg = typeof data==='object'&&data? data.error : String(data); throw new Error(`HTTP ${res.status}: ${msg}`); }
+  return data;
+}
+
+function photoUrlFromKey(key){
+  if(!key) return null; const parts = String(key).split('/');
+  const id=parts[1], fname=parts[2]; if(!id||!fname) return null;
+  return `${apiBase()}/photo/${encodeURIComponent(id)}/${encodeURIComponent(fname)}`;
+}
+
+async function load(){
+  const s=$('#status'); s.textContent='Loading…'; s.className='muted';
+  try{
+    const list = await req('/inventory');
+    if(!list.ok) throw new Error(list.error||'load_failed');
+    render(list.items||[]);
+    s.textContent = `Loaded ${list.items.length} item(s)`;
+  }catch(e){ s.textContent = e.message; s.className = 'err'; }
+}
+
+function render(items){
+  gridBody.innerHTML = '';
+  for(const it of items){
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="grid-id">${it.id}</td>
+      <td>${it.sku}</td>
+      <td><input size="18" value="${(it.title||'').replaceAll('"','&quot;')}" data-f="title"></td>
+      <td><input size="10" value="${it.category||''}" data-f="category"></td>
+      <td>
+        <select data-f="status">${['staged','active','sold'].map(s=>`<option value="${s}" ${it.status===s?'selected':''}>${s}</option>`).join('')}</select>
+      </td>
+      <td><input size="6" value="${it.cost_cents||0}" data-f="cost_cents" type="number"></td>
+      <td><input size="4" value="${it.quantity||0}" data-f="quantity" type="number" min="0"></td>
+      <td><input size="10" value="${it.listed_date||''}" data-f="listed_date" placeholder="YYYY-MM-DD"></td>
+      <td>${it.photo_key?`<img src="${photoUrlFromKey(it.photo_key)}" alt="photo"/>`:''}<input type="file" accept="image/*" data-id="${it.id}" class="uploader"></td>
+      <td class="actions">
+        <button data-act="save" data-id="${it.id}">Save</button>
+        <button class="danger" data-act="del" data-id="${it.id}">Delete</button>
+        <button data-act="delphoto" data-id="${it.id}">Delete Photo</button>
+      </td>`;
+    gridBody.appendChild(tr);
+  }
+}
+
+// --- create item
+$('#btnCreate').addEventListener('click', async ()=>{
+  const sku=$('#newSku').value.trim();
+  const title=$('#newTitle').value.trim();
+  const category=$('#newCategory').value.trim();
+  const cost_usd=parseFloat($('#newCostUsd').value||'0');
+  const quantity=parseInt($('#newQty').value||'1',10);
+  if(!sku||!title||!category){ alert('SKU, Title, Category required'); return; }
+  try{
+    const res = await req('/inventory', { method:'POST', body:{ sku, title, category, cost_usd, quantity } });
+    if(!res.ok) throw new Error(res.error||'create_failed');
+    $('#newSku').value=''; $('#newTitle').value=''; $('#newCategory').value=''; $('#newCostUsd').value=''; $('#newQty').value='1';
+    await load();
+  }catch(e){ alert(e.message); }
+});
+
+// --- upload photo (delegated)
+gridBody.addEventListener('change', async (ev)=>{
+  if(ev.target.classList.contains('uploader')){
+    const file = ev.target.files?.[0]; if(!file) return;
+    const id = ev.target.getAttribute('data-id');
+    const fd = new FormData(); fd.append('file', file, file.name||'upload.png');
+    try{ await req(`/inventory/${encodeURIComponent(id)}/photo`, { method:'POST', body: fd }); await load(); }
+    catch(e){ alert(e.message); }
+  }
+});
+
+// --- row buttons (delegated)
+gridBody.addEventListener('click', async (ev)=>{
+  const btn = ev.target.closest('button'); if(!btn) return;
+  const id = btn.getAttribute('data-id');
+  const act = btn.getAttribute('data-act');
+  try{
+    if(act==='save'){
+      const tr = btn.closest('tr'); const patch={};
+      tr.querySelectorAll('input[data-f],select[data-f]').forEach(el=>{ const k=el.getAttribute('data-f'); let v=el.value; if(k==='cost_cents'||k==='quantity') v=Number(v||0); patch[k]=v; });
+      await req(`/inventory/${encodeURIComponent(id)}`, { method:'PATCH', body: patch });
+      await load();
+    } else if(act==='del'){
+      if(!confirm('Delete this item?')) return;
+      await req(`/inventory/${encodeURIComponent(id)}`, { method:'DELETE' });
+      await load();
+    } else if(act==='delphoto'){
+      await req(`/inventory/${encodeURIComponent(id)}/photo`, { method:'DELETE' });
+      await load();
+    }
+  }catch(e){ alert(e.message); }
+});
+
+// --- load
+$('#btnLoad').addEventListener('click', load);
+</script>
+  </body>
+</html>
