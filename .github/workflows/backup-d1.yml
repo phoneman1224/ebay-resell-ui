@@ -1,21 +1,19 @@
 name: Nightly D1 Backup to GitHub Releases
 
 on:
-  workflow_dispatch:
   schedule:
-    - cron: '17 5 * * *' # daily @ 05:17 UTC
+    - cron: "17 5 * * *"   # daily at ~05:17 UTC
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: write   # needed to create releases & upload assets
+
+env:
+  D1_NAME: resellapp
 
 jobs:
   backup:
     runs-on: ubuntu-latest
-    env:
-      WRANGLER_NON_INTERACTIVE: "true"
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      CLOUDFLARE_API_TOKEN:  ${{ secrets.CLOUDFLARE_API_TOKEN }}
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -23,43 +21,39 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: 20
 
-      - name: Install Wrangler (v4)
+      - name: Install Wrangler
         run: npm i -g wrangler@4
 
-      - name: Export D1 (SQL)
-        run: wrangler d1 export resellapp --remote --output d1_backup.sql
-
-      - name: Compress
-        run: gzip -9 d1_backup.sql
-
-      - name: Compose tag + names
-        id: tagvars
+      - name: Dump D1 database (SQLite .dump)
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          D1_NAME: ${{ env.D1_NAME }}
         run: |
-          TS="$(date -u +'%Y%m%d-%H%M%S')"
-          echo "TAG_NAME=d1-backup-${TS}" >> "$GITHUB_ENV"
-          echo "RELEASE_NAME=D1 backup ${TS}" >> "$GITHUB_ENV"
-          echo "ASSET_PATH=d1_backup.sql.gz" >> "$GITHUB_ENV"
-          echo "ASSET_NAME=d1_backup_${TS}.sql.gz" >> "$GITHUB_ENV"
+          set -euo pipefail
+          # Prefer wrangler d1 export if available (wrangler@4)
+          if wrangler d1 export "$D1_NAME" --remote --output d1-backup.sql; then
+            :
+          else
+            # Fallback to .dump if export is unavailable
+            wrangler d1 execute "$D1_NAME" --remote --command '.dump' > d1-backup.sql
+          fi
+          ls -l d1-backup.sql
+          grep -q 'CREATE TABLE' d1-backup.sql || { echo "Backup file looks suspicious (no CREATE TABLE)."; exit 1; }
 
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
+      - name: Compress backup
+        run: gzip -9 d1-backup.sql
+
+      - name: Create release & upload asset
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name:     ${{ env.TAG_NAME }}
-          release_name: ${{ env.RELEASE_NAME }}
-          draft: false
-          prerelease: false
-
-      - name: Upload backup asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ${{ env.ASSET_PATH }}
-          asset_name: ${{ env.ASSET_NAME }}
-          asset_content_type: application/gzip
+        run: |
+          set -euo pipefail
+          TS="$(date -u +'%Y-%m-%dT%H%MZ')"
+          TAG="d1-backup-${TS}"
+          TITLE="$TAG"
+          NOTES="Automated D1 backup from GitHub Actions (wrangler@4)."
+          gh release create "$TAG" --title "$TITLE" --notes "$NOTES" d1-backup.sql.gz
