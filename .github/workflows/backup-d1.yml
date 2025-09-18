@@ -1,21 +1,21 @@
 name: Nightly D1 Backup to GitHub Releases
 
 on:
-  schedule:
-    - cron: '17 5 * * *'   # daily at 05:17 UTC
   workflow_dispatch:
+  schedule:
+    - cron: '17 5 * * *' # daily @ 05:17 UTC
+
+permissions:
+  contents: write
 
 jobs:
   backup:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write   # needed to create Releases and upload assets
-      actions: read
     env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      WRANGLER_NON_INTERACTIVE: "true"
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      D1_NAME: resellapp
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      CLOUDFLARE_API_TOKEN:  ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -25,20 +25,41 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install Wrangler
-        run: npm i -g wrangler@3
+      - name: Install Wrangler (v4)
+        run: npm i -g wrangler@4
 
-      - name: Dump D1 database (SQLite .dump)
-        run: |
-          set -euo pipefail
-          wrangler d1 execute "$D1_NAME" --remote --account-id "$CLOUDFLARE_ACCOUNT_ID" --command '.dump' > d1-backup.sql
-          ls -l d1-backup.sql
-          # Quick sanity check
-          grep -q 'CREATE TABLE' d1-backup.sql || { echo "Backup file looks suspicious (no CREATE TABLE)."; exit 1; }
+      - name: Export D1 (SQL)
+        run: wrangler d1 export resellapp --remote --output d1_backup.sql
 
-      - name: Create GitHub Release and upload dump
+      - name: Compress
+        run: gzip -9 d1_backup.sql
+
+      - name: Compose tag + names
+        id: tagvars
         run: |
-          set -euo pipefail
-          TAG="d1-backup-$(date -u +%Y%m%dT%H%M%SZ)"
-          echo "Creating release ${TAG}"
-          gh release create "$TAG" --title "$TAG" --notes "Automated D1 dump (resellapp)" d1-backup.sql
+          TS="$(date -u +'%Y%m%d-%H%M%S')"
+          echo "TAG_NAME=d1-backup-${TS}" >> "$GITHUB_ENV"
+          echo "RELEASE_NAME=D1 backup ${TS}" >> "$GITHUB_ENV"
+          echo "ASSET_PATH=d1_backup.sql.gz" >> "$GITHUB_ENV"
+          echo "ASSET_NAME=d1_backup_${TS}.sql.gz" >> "$GITHUB_ENV"
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name:     ${{ env.TAG_NAME }}
+          release_name: ${{ env.RELEASE_NAME }}
+          draft: false
+          prerelease: false
+
+      - name: Upload backup asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ${{ env.ASSET_PATH }}
+          asset_name: ${{ env.ASSET_NAME }}
+          asset_content_type: application/gzip
