@@ -1,16 +1,21 @@
-name: Nightly D1 Backup to R2
+name: Nightly D1 Backup to GitHub Releases
+
 on:
   schedule:
-    - cron: "15 3 * * *"   # 03:15 UTC daily
+    - cron: "17 5 * * *"   # 05:17 UTC daily
   workflow_dispatch: {}
+
+permissions:
+  contents: write   # needed for gh release create/upload
+
 jobs:
   backup:
     runs-on: ubuntu-latest
     env:
+      DB_NAME: resellapp
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      CLOUDFLARE_API_TOKEN:  ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      D1_NAME: resellapp
-      R2_BUCKET: resell-photos
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -18,30 +23,44 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
 
-      - name: Wrangler version
-        run: npx wrangler@latest --version
+      - name: Install Wrangler CLI
+        run: npm i -g wrangler@4
 
-      - name: Export D1 (remote)
+      - name: Export D1 (SQL) and publish to GitHub Release
+        shell: bash
         run: |
-          set -euxo pipefail
-          npx wrangler@latest d1 export "${D1_NAME}" --remote --output d1.sql
+          set -euo pipefail
+          echo "Exporting D1 database: ${DB_NAME}"
+          TS="$(date -u +%Y%m%d_%H%M%S)"
+          OUT="d1_${DB_NAME}_${TS}.sql"
 
-      - name: Compress
-        run: |
-          set -euxo pipefail
-          gzip -9 d1.sql
-          ls -lh d1.sql.gz
+          # Prefer native export; fall back to .dump if export subcommand is unavailable.
+          if wrangler d1 export "${DB_NAME}" --remote --output "${OUT}" 2>/dev/null; then
+            echo "Wrangler export completed."
+          else
+            echo "wrangler d1 export not available; falling back to .dump..."
+            wrangler d1 execute "${DB_NAME}" --remote --command ".dump" > "${OUT}"
+          fi
 
-      - name: Upload to R2
-        run: |
-          set -euxo pipefail
-          TS="$(date -u +%F_%H-%M-%S)"
-          KEY="d1-backups/${{ github.repository }}/resellapp-${TS}.sql.gz"
-          npx wrangler@latest r2 object put "${R2_BUCKET}/${KEY}" --file d1.sql.gz
-          echo "Uploaded r2://${R2_BUCKET}/${KEY}"
+          ls -l "${OUT}" || true
+          gzip -9 "${OUT}"
+          SHA="$(sha256sum "${OUT}.gz" | cut -d' ' -f1)"
+          echo "sha256=${SHA}" > "sha_${DB_NAME}_${TS}.txt"
 
-      - name: Keep last 10 listings (log)
-        run: |
-          npx wrangler@latest r2 object list "${R2_BUCKET}" --prefix "d1-backups/${{ github.repository }}/" --limit 10 || true
+          TAG="backup-$(date -u +%F)"
+          TITLE="D1 backup $(date -u +%F)"
+          NOTES="Automated nightly backup for ${DB_NAME} at ${TS} UTC"
+
+          # Create or update a date-based release.
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "Release ${TAG} exists; uploading assets (clobber)..."
+            gh release upload "${TAG}" "${OUT}.gz" "sha_${DB_NAME}_${TS}.txt" --clobber
+          else
+            echo "Creating release ${TAG}..."
+            gh release create "${TAG}" "${OUT}.gz" "sha_${DB_NAME}_${TS}.txt" --title "${TITLE}" --notes "${NOTES}"
+          fi
+
+          echo "Release URL:"
+          gh release view "${TAG}" --json url --jq .url
