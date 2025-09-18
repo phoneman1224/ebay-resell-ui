@@ -252,3 +252,15 @@ document.addEventListener('DOMContentLoaded', ()=>{
   bindPhotos();
   bindPhotosBoot();
 });
+
+// --- build meta banner (auto-injected) ---
+(() => {
+  try {
+    const ver = import.meta?.env?.VITE_APP_VERSION || 'dev';
+    const sha = import.meta?.env?.VITE_GIT_SHA || '';
+    const el = document.createElement('div');
+    el.textContent = `Build ${ver}${sha ? ` (${sha})` : ''}`;
+    el.style.cssText = 'position:fixed;right:8px;bottom:8px;background:#000a;color:#fff;padding:6px 10px;border-radius:8px;font:12px/1.2 system-ui,sans-serif;z-index:9999';
+    document.addEventListener('DOMContentLoaded', () => document.body.appendChild(el));
+  } catch {}
+})();

@@ -1,0 +1,47 @@
+name: Nightly D1 Backup to R2
+on:
+  schedule:
+    - cron: "15 3 * * *"   # 03:15 UTC daily
+  workflow_dispatch: {}
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN:  ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      D1_NAME: resellapp
+      R2_BUCKET: resell-photos
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Wrangler version
+        run: npx wrangler@latest --version
+
+      - name: Export D1 (remote)
+        run: |
+          set -euxo pipefail
+          npx wrangler@latest d1 export "${D1_NAME}" --remote --output d1.sql
+
+      - name: Compress
+        run: |
+          set -euxo pipefail
+          gzip -9 d1.sql
+          ls -lh d1.sql.gz
+
+      - name: Upload to R2
+        run: |
+          set -euxo pipefail
+          TS="$(date -u +%F_%H-%M-%S)"
+          KEY="d1-backups/${{ github.repository }}/resellapp-${TS}.sql.gz"
+          npx wrangler@latest r2 object put "${R2_BUCKET}/${KEY}" --file d1.sql.gz
+          echo "Uploaded r2://${R2_BUCKET}/${KEY}"
+
+      - name: Keep last 10 listings (log)
+        run: |
+          npx wrangler@latest r2 object list "${R2_BUCKET}" --prefix "d1-backups/${{ github.repository }}/" --limit 10 || true
