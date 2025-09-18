@@ -14,3 +14,8 @@ task_log_*.log
 *.swo
 .idea/
 .vscode/
+ui/node_modules/
+.vite/
+.wrangler/
+worker/.wrangler/
+worker_api.bak.*
