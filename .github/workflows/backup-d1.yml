@@ -1,21 +1,21 @@
 name: Nightly D1 Backup to GitHub Releases
 
 on:
+  workflow_dispatch:
   schedule:
-    - cron: "17 5 * * *"   # 05:17 UTC daily
-  workflow_dispatch: {}
+    - cron: '17 5 * * *' # Daily at 05:17 UTC
 
 permissions:
-  contents: write   # needed for gh release create/upload
+  contents: write
 
 jobs:
   backup:
+    name: Export D1 -> GitHub Release
     runs-on: ubuntu-latest
     env:
-      DB_NAME: resellapp
+      D1_NAME: resellapp
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -23,44 +23,25 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: '20'
 
-      - name: Install Wrangler CLI
+      - name: Install wrangler
         run: npm i -g wrangler@4
 
-      - name: Export D1 (SQL) and publish to GitHub Release
-        shell: bash
+      - name: Export D1 (remote)
         run: |
-          set -euo pipefail
-          echo "Exporting D1 database: ${DB_NAME}"
-          TS="$(date -u +%Y%m%d_%H%M%S)"
-          OUT="d1_${DB_NAME}_${TS}.sql"
+          set -euxo pipefail
+          wrangler d1 export "$D1_NAME" --remote --account-id "$CLOUDFLARE_ACCOUNT_ID" --output d1-export.sql
+          ls -l d1-export.sql
+          gzip -9 d1-export.sql
+          ls -l d1-export.sql.gz
 
-          # Prefer native export; fall back to .dump if export subcommand is unavailable.
-          if wrangler d1 export "${DB_NAME}" --remote --output "${OUT}" 2>/dev/null; then
-            echo "Wrangler export completed."
-          else
-            echo "wrangler d1 export not available; falling back to .dump..."
-            wrangler d1 execute "${DB_NAME}" --remote --command ".dump" > "${OUT}"
-          fi
-
-          ls -l "${OUT}" || true
-          gzip -9 "${OUT}"
-          SHA="$(sha256sum "${OUT}.gz" | cut -d' ' -f1)"
-          echo "sha256=${SHA}" > "sha_${DB_NAME}_${TS}.txt"
-
-          TAG="backup-$(date -u +%F)"
-          TITLE="D1 backup $(date -u +%F)"
-          NOTES="Automated nightly backup for ${DB_NAME} at ${TS} UTC"
-
-          # Create or update a date-based release.
-          if gh release view "${TAG}" >/dev/null 2>&1; then
-            echo "Release ${TAG} exists; uploading assets (clobber)..."
-            gh release upload "${TAG}" "${OUT}.gz" "sha_${DB_NAME}_${TS}.txt" --clobber
-          else
-            echo "Creating release ${TAG}..."
-            gh release create "${TAG}" "${OUT}.gz" "sha_${DB_NAME}_${TS}.txt" --title "${TITLE}" --notes "${NOTES}"
-          fi
-
-          echo "Release URL:"
-          gh release view "${TAG}" --json url --jq .url
+      - name: Create Release and Upload Asset
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: d1-backup-${{ github.run_id }}
+          name: D1 Backup ${{ github.run_id }}
+          body: |
+            Automated D1 export from workflow run ${{ github.run_id }} at ${{ github.run_started_at }}.
+            Database: ${{ env.D1_NAME }}.
+          files: d1-export.sql.gz
