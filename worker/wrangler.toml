@@ -1,0 +1,22 @@
+name = "resell-api"
+main = "src/index.ts"
+compatibility_date = "2024-11-06"
+
+[vars]
+ALLOWED_ORIGIN = "*"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "resellapp"
+database_id = "2e94dd54-0134-4f8f-9487-ee96144b1f94"
+
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "resell-photos"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "e0de40cf32174fd0911c986054480002"
+
+[observability]
+enabled = true

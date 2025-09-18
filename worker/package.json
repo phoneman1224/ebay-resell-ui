@@ -1,0 +1,16 @@
+{
+  "name": "resell-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --persist-to=./.wrangler/state --local",
+    "deploy": "wrangler deploy",
+    "migrate": "wrangler d1 execute resellapp --file=./schema.sql"
+  },
+  "devDependencies": {
+    "wrangler": "^3.80.0",
+    "typescript": "^5.4.0",
+    "@cloudflare/workers-types": "^4.20240512.0"
+  }
+}

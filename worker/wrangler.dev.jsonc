@@ -1,0 +1,9 @@
+{
+  "name": "resell-api-dev",
+  "compatibility_date": "2024-10-01",
+  "main": "src/index.ts",
+  "vars": { "ALLOWED_ORIGIN": "*" },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "resellapp", "database_id": "LOCAL-DEV-IGNORE", "preview_database_id": "LOCAL-DEV-IGNORE" }
+  ]
+}

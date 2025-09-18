@@ -1,0 +1,25 @@
+<!doctype html><meta charset="utf-8"><title>Resell Quick Test</title>
+<style>body{font-family:system-ui;margin:20px;max-width:900px}input,button{padding:8px 10px;margin:4px 0}button{cursor:pointer}pre{background:#f7f7f7;padding:10px;border-radius:8px;white-space:pre-wrap}.row{display:flex;gap:8px;flex-wrap:wrap}label{font-weight:600;margin-top:8px;display:block}</style>
+<h1>Resell Quick Test</h1>
+<label>API Base</label><input id="api" size="60" value="http://127.0.0.1:8787/api">
+<label>Owner Token</label><input id="tok" size="60" value="change-me">
+<div class="row"><button id="bHealth">Health</button><button id="bLoad">Load Inventory</button><button id="bCreate">Create DEMO item</button></div>
+<pre id="out">{}</pre>
+<script>
+const $=s=>document.querySelector(s), out=$('#out');
+const api = ()=>$('#api').value.trim().replace(/\/+$/,'');
+const tok = ()=>$('#tok').value.trim();
+const show = x => out.textContent = typeof x==='string'? x : JSON.stringify(x,null,2);
+const req = async (path,opt={})=>{
+  const h = opt.headers||{};
+  if(!(opt.body instanceof FormData)) h['Content-Type']=h['Content-Type']||'application/json';
+  if(tok()) h['Authorization']=`Bearer ${tok()}`;
+  if((opt.method||'GET').toUpperCase()!=='GET' && !h['Idempotency-Key']) h['Idempotency-Key']=(crypto.randomUUID&&crypto.randomUUID())||Math.random().toString(36).slice(2);
+  const r = await fetch(api()+path,{...opt,headers:h});
+  const ct = r.headers.get('content-type')||''; const data = ct.includes('application/json')? await r.json() : await r.text();
+  if(!r.ok) throw new Error((data&&data.error&&data.error.message)||r.statusText); return data;
+};
+$('#bHealth').onclick = async()=>{ try{ show(await req('/health')); }catch(e){ show('Health error: '+e.message); } };
+$('#bLoad').onclick   = async()=>{ try{ show(await req('/inventory')); }catch(e){ show('Load error: '+e.message); } };
+$('#bCreate').onclick = async()=>{ try{ const body={sku:'DEMO-'+Date.now().toString().slice(-6),title:'Demo Item',category:'Shoes',cost_cents:1250,quantity:1}; show(await req('/inventory',{method:'POST',body:JSON.stringify(body)})); }catch(e){ show('Create error: '+e.message); } };
+</script>

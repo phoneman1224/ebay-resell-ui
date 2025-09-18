@@ -1,0 +1,16 @@
+# build artifacts
+ui/dist/
+ui/.cache/
+node_modules/
+# local env and tokens
+*.log
+owner_token.txt
+api_base_url.txt
+task_log_*.log
+.cicd.env
+# OS/editor
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/

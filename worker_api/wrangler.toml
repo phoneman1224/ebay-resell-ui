@@ -1,0 +1,15 @@
+name = "resell-api"
+main = "worker.mjs"
+compatibility_date = "2024-12-01"
+
+[vars]
+ALLOWED_ORIGIN = "https://ebay-resell-ui.pages.dev"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "resellapp"
+database_id = "2e94dd54-0134-4f8f-9487-ee96144b1f94"
+
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "resell-photos"

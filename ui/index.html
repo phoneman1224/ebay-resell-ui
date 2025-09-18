@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Resell Dashboard</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; background:#0b0d10; color:#e6edf3;}
+      header { padding:12px 20px; background:#10151a; border-bottom:1px solid #1f2630;}
+      .wrap { max-width: 1100px; margin:20px auto; padding:0 16px;}
+      nav { display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap; align-items:center;}
+      button.tab { background:#161b22; border:1px solid #30363d; color:#e6edf3; padding:8px 12px; border-radius:10px; cursor:pointer;}
+      button.tab.active { border-color:#58a6ff; box-shadow:0 0 0 2px rgba(88,166,255,0.15) inset;}
+      .card { background:#0e1116; border:1px solid #30363d; border-radius:14px; padding:16px; margin-bottom:16px;}
+      .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; }
+      label { font-size:12px; color:#9ba3af; display:block; margin-bottom:6px;}
+      input, select, textarea { width:100%; padding:8px; border-radius:8px; border:1px solid #30363d; background:#0b0f14; color:#e6edf3;}
+      textarea { min-height:64px; }
+      .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+      .btn { background:#238636; border:1px solid #2ea043; color:white; padding:8px 12px; border-radius:8px; cursor:pointer; }
+      .btn.secondary { background:#161b22; border:1px solid #30363d; color:#e6edf3;}
+      table { width:100%; border-collapse:collapse;}
+      th, td { border-bottom:1px solid #1f2630; padding:8px; text-align:left; font-size:14px;}
+      .muted { color:#9ba3af; font-size:13px;}
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .spacer { flex:1; }
+      .token { max-width:280px; }
+      .thumbs { display:grid; grid-template-columns:repeat(auto-fill, minmax(120px,1fr)); gap:10px; }
+      .thumbs img { width:100%; height:100px; object-fit:cover; border-radius:8px; border:1px solid #30363d; background:#0b0f14; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="wrap row">
+        <h2 style="margin:0">eBay Resell — Dashboard</h2>
+        <div class="spacer"></div>
+        <label style="margin:0;font-size:12px">Owner Token</label>
+        <input id="owner-token" class="token" placeholder="paste token from owner_token.txt">
+        <button id="owner-save" class="btn secondary">Save</button>
+      </div>
+    </header>
+    <div class="wrap">
+      <nav>
+        <button class="tab active" data-tab="inventory">Inventory</button>
+        <button class="tab" data-tab="sales">Sales</button>
+        <button class="tab" data-tab="expenses">Expenses</button>
+        <button class="tab" data-tab="lots">Lots</button>
+        <button class="tab" data-tab="reports">Reports</button>
+      </nav>
+
+      <section id="inventory" class="tabview">
+        <div class="card">
+          <h3>New Inventory</h3>
+          <div class="grid">
+            <div><label>SKU</label><input id="inv-sku" /></div>
+            <div><label>Title</label><input id="inv-title" /></div>
+            <div><label>Category</label><input id="inv-category" value="Shoes"/></div>
+            <div><label>Cost (USD)</label><input id="inv-cost" type="number" step="0.01" value="0"/></div>
+            <div><label>Quantity</label><input id="inv-qty" type="number" step="1" value="1"/></div>
+          </div>
+          <div style="margin-top:12px" class="row">
+            <button class="btn" id="inv-create">Create</button>
+            <button class="btn secondary" id="inv-refresh">Refresh List</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Photos (by SKU)</h3>
+          <div class="row">
+            <div><label>SKU</label><input id="ph-sku" placeholder="existing SKU"/></div>
+            <div><label>File</label><input id="ph-file" type="file" accept="image/*"/></div>
+            <div style="align-self:end"><button class="btn" id="ph-upload">Upload</button></div>
+            <div class="muted">Uploads require Owner Token.</div>
+          </div>
+          <div style="margin-top:12px">
+            <button class="btn secondary" id="ph-refresh">Refresh Photos</button>
+          </div>
+          <div id="ph-thumbs" class="thumbs" style="margin-top:12px"></div>
+        </div>
+
+        <div class="card">
+          <h3>Inventory List</h3>
+          <div id="inv-list" class="muted">Loading…</div>
+        </div>
+      </section>
+
+      <section id="sales" class="tabview" style="display:none">
+        <div class="card">
+          <h3>Record Sale</h3>
+          <div class="grid">
+            <div><label>Date (YYYY-MM-DD)</label><input id="s-date"/></div>
+            <div><label>SKU</label><input id="s-sku"/></div>
+            <div><label>Qty</label><input id="s-qty" type="number" step="1" value="1"/></div>
+            <div><label>Sold Price (USD)</label><input id="s-price" type="number" step="0.01" value="0"/></div>
+            <div><label>Buyer Shipping (USD)</label><input id="s-bship" type="number" step="0.01" value="0"/></div>
+            <div><label>Platform Fees (USD)</label><input id="s-fees" type="number" step="0.01" value="0"/></div>
+            <div><label>Promo Fee (USD)</label><input id="s-promo" type="number" step="0.01" value="0"/></div>
+            <div><label>Shipping Label (USD)</label><input id="s-shipcost" type="number" step="0.01" value="0"/></div>
+            <div><label>Other Costs (USD)</label><input id="s-other" type="number" step="0.01" value="0"/></div>
+            <div><label>Order Ref</label><input id="s-ref"/></div>
+            <div><label>Note</label><textarea id="s-note"></textarea></div>
+          </div>
+          <div style="margin-top:12px" class="row">
+            <button class="btn" id="s-create">Save Sale</button>
+            <button class="btn secondary" id="s-refresh">Refresh List</button>
+          </div>
+        </div>
+        <div class="card">
+          <h3>Sales</h3>
+          <div id="sales-list" class="muted">Loading…</div>
+        </div>
+      </section>
+
+      <section id="expenses" class="tabview" style="display:none">
+        <div class="card">
+          <h3>Add Expense</h3>
+          <div class="grid">
+            <div><label>Date (YYYY-MM-DD)</label><input id="e-date"/></div>
+            <div><label>Category</label><input id="e-cat" value="Supplies"/></div>
+            <div><label>Type</label>
+              <select id="e-type">
+                <option value="standard" selected>standard</option>
+                <option value="mileage">mileage</option>
+              </select>
+            </div>
+            <div><label>Amount (USD)</label><input id="e-amt" type="number" step="0.01" value="0"/></div>
+            <div><label>Vendor</label><input id="e-vendor"/></div>
+            <div><label>SKU (optional)</label><input id="e-sku"/></div>
+            <div><label>Miles</label><input id="e-miles" type="number" step="1" value="0"/></div>
+            <div><label>Rate (USD/mi)</label><input id="e-rate" type="number" step="0.01" value="0"/></div>
+            <div><label>Deductible?</label>
+              <select id="e-deduct"><option value="1" selected>Yes</option><option value="0">No</option></select>
+            </div>
+            <div><label>Note</label><textarea id="e-note"></textarea></div>
+          </div>
+          <div style="margin-top:12px" class="row">
+            <button class="btn" id="e-create">Save Expense</button>
+            <button class="btn secondary" id="e-refresh">Refresh List</button>
+          </div>
+        </div>
+        <div class="card">
+          <h3>Expenses</h3>
+          <div id="exp-list" class="muted">Loading…</div>
+        </div>
+      </section>
+
+      <section id="lots" class="tabview" style="display:none">
+        <div class="card">
+          <h3>Create Lot</h3>
+          <div class="grid">
+            <div><label>Title</label><input id="l-title"/></div>
+            <div><label>Status</label>
+              <select id="l-status">
+                <option value="open" selected>open</option>
+                <option value="closed">closed</option>
+              </select>
+            </div>
+            <div style="grid-column:1/-1"><label>Note</label><textarea id="l-note"></textarea></div>
+          </div>
+          <div style="margin-top:12px" class="row">
+            <button class="btn" id="l-create">Create Lot</button>
+            <button class="btn secondary" id="l-refresh">Refresh Lots</button>
+          </div>
+        </div>
+        <div class="card">
+          <h3>Lots</h3>
+          <div id="l-list" class="muted">Loading…</div>
+        </div>
+
+        <div class="card">
+          <h3>Manage Items in Selected Lot</h3>
+          <div class="row">
+            <div><label>SKU to Add</label><input id="li-sku" placeholder="SKU"/></div>
+            <div style="align-self:end"><button class="btn" id="li-add">Add to Lot</button></div>
+            <div class="muted">Write actions require Owner Token.</div>
+          </div>
+          <div style="margin-top:12px">
+            <div id="li-list" class="muted">Select a lot to see items…</div>
+          </div>
+        </div>
+      </section>
+
+      <section id="reports" class="tabview" style="display:none">
+        <div class="card">
+          <h3>Summary</h3>
+          <div class="row">
+            <div><label>From</label><input id="r-from" placeholder="YYYY-MM-DD"/></div>
+            <div><label>To</label><input id="r-to" placeholder="YYYY-MM-DD"/></div>
+            <div style="align-self:end"><button class="btn" id="r-run">Run</button></div>
+          </div>
+          <pre id="r-out" class="mono muted" style="margin-top:12px">No data</pre>
+        </div>
+      </section>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,11 @@
+# COPY/PASTE THESE LINES (edit values) IN YOUR TERMINAL, THEN RE-RUN THE SCRIPT:
+export GITHUB_OWNER="your-github-username"
+export GITHUB_REPO="ebay-resell-ui"            # optional
+export GITHUB_REPO_VISIBILITY="private"        # or "public"
+
+# GitHub Personal Access Token (scopes: repo, workflow)
+export GH_TOKEN="ghp_XXXXXXXXXXXXXXXXXXXXXXXX"
+
+# Cloudflare Account + API Token (with Workers:Edit, Pages:Edit, D1:Edit)
+export CLOUDFLARE_ACCOUNT_ID="xxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+export CLOUDFLARE_API_TOKEN="CF-XXXXXXXXXXXXXXXXXXXXXXXXXX"
