@@ -2,23 +2,22 @@ name: Nightly D1 Backup to GitHub Releases
 
 on:
   schedule:
-    - cron: '17 5 * * *'   # Every day at 05:17 UTC
+    - cron: '17 5 * * *'   # nightly at 05:17 UTC
   workflow_dispatch: {}
 
-# Needed so we can create releases & upload assets
 permissions:
-  contents: write
+  contents: write   # needed to create Releases & upload assets
 
 jobs:
   backup:
     runs-on: ubuntu-latest
+    concurrency:
+      group: d1-backup
+      cancel-in-progress: false
     env:
       D1_NAME: resellapp
-      # These must exist as repo secrets
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      # GH CLI uses GH_TOKEN if present (we map it to Actions' GITHUB_TOKEN)
-      GH_TOKEN: ${{ github.token }}
 
     steps:
       - name: Checkout
@@ -29,35 +28,26 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install Wrangler
+      - name: Install Wrangler (v4)
         run: npm i -g wrangler@4
 
-      - name: Dump D1 database (SQLite .dump) and gzip
-        shell: bash
+      - name: Dump D1 database (SQLite export)
         run: |
           set -euo pipefail
-          # Create SQL dump using Wrangler v4 (no --account-id flag)
           wrangler d1 export "$D1_NAME" --remote --output d1-backup.sql
           ls -l d1-backup.sql
-          # Quick sanity check
+          # quick sanity check: must contain at least one CREATE TABLE
           grep -q 'CREATE TABLE' d1-backup.sql || { echo "Backup file looks suspicious (no CREATE TABLE)."; exit 1; }
-          gzip -9f d1-backup.sql
-          ls -l d1-backup.sql.gz
 
-      - name: Publish GitHub Release with asset
-        shell: bash
+      - name: Compress backup
+        run: gzip -9 d1-backup.sql
+
+      - name: Create GitHub Release & upload asset
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          TAG="d1-backup-$(date -u +%Y%m%d-%H%M)"
-          TITLE="D1 backup ${TAG}"
-          NOTES=$(
-            cat <<EOF
-Automated Cloudflare D1 backup.
-
-- Database: ${D1_NAME}
-- Timestamp (UTC): $(date -u +"%Y-%m-%d %H:%M:%S")
-- File: d1-backup.sql.gz
-EOF
-          )
-          # Create the release and upload asset
-          gh release create "$TAG" d1-backup.sql.gz --title "$TITLE" --notes "$NOTES"
+          TAG="d1-backup-$(date -u +%Y%m%d-%H%M%S)"
+          TITLE="D1 backup ($D1_NAME) $(date -u +'%F %T UTC')"
+          NOTES="Automated D1 backup created by GitHub Actions (wrangler d1 export + gzip)."
+          gh release create "$TAG" d1-backup.sql.gz --title "$TITLE" --notes "$NOTES" -R "$GITHUB_REPOSITORY"
