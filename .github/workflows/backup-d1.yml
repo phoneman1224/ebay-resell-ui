@@ -23,7 +23,6 @@ jobs:
       - name: Install Wrangler
         run: npm i -g wrangler@4
 
-      # Quick API sanity check using your secrets (no secrets printed)
       - name: Verify Cloudflare API access
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -35,16 +34,13 @@ jobs:
             | jq -e '.success == true' >/dev/null
 
       - name: Export D1 -> SQL
-        id: export
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
           wrangler --version
-          # Export DB to a SQL file
           wrangler d1 export "$D1_NAME" --remote > d1-backup.sql
-          # Basic sanity: must contain at least one CREATE TABLE or pragma
           if ! grep -Eq '(CREATE TABLE|BEGIN TRANSACTION|PRAGMA)' d1-backup.sql; then
             echo "SQL dump looks empty/suspicious"; exit 1
           fi
